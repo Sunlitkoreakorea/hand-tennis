@@ -370,7 +370,7 @@ function toss(by) {
 function serveFire(by, tau, power) {
   const b = S.ball, p = clamp(power * (S.faults > 0 ? 0.72 : 1), 0, 1);
   const from = { x: b.x, y: clamp(b.y, 1.7, 3.0), z: b.z };
-  const plan = TC.planServe({ from, power: p, timing: tau, boxSign: S.boxSign, facing: by === 0 ? -1 : 1, rnd });
+  const plan = TC.planServe({ from, power: p, timing: tau, boxSign: S.boxSign, facing: by === 0 ? -1 : 1, mul: by === 1 ? S.lvl.serveMul : 1, rnd });
   S.judge.serveHit(by, S.boxSign);
   S.phase = 'rally';
   if (by === 1) startSwing(Q, 'serve', p, 0);
@@ -400,7 +400,7 @@ function launch(by, plan, from, isServe) {
 function planContact(recv) {
   S.plan[recv] = null;
   const av = recv === 0 ? P : Q, side = recv === 0 ? 1 : -1;
-  const c = TC.findContact(S.ball, side);
+  const c = TC.findContact(S.ball, side, recv === 1 && S.lvl.cy ? { idealY: S.lvl.cy } : undefined);
   if (!c || c.out) return;
   const ballSide = sgn(c.x - av.x);
   const standX = clamp(c.x - ballSide * 0.75, -7.2, 7.2);
@@ -408,7 +408,7 @@ function planContact(recv) {
   S.plan[recv] = { c, absT: S.simT + c.t, ballSide, standX, standZ };
   av.tx = standX; av.tz = standZ;
   av.moveAt = recv === 0 ? S.simT : S.simT + S.lvl.react;
-  av.speed = recv === 0 ? (S.mode === 'practice' && LEVELS[SET.machine].pspd) || 7.6 : S.lvl.speed;
+  av.speed = recv === 0 ? (S.mode === 'practice' ? TC.machineLevel(SET.machine).pspd : S.lvl.pspd) || 7.6 : S.lvl.speed;
 }
 
 function cpuSwing() {
@@ -530,7 +530,7 @@ function startPractice() {
   setHint(S.cam.on ? '공이 오면 팔을 휘둘러요. 위로 쳐올리면 탑스핀!' : '공이 오면 스페이스! (↑ 누르고 치면 탑스핀)');
 }
 function feedBall() {
-  const L = Object.assign({}, LEVELS[SET.machine], { miss: 0 });
+  const L = TC.machineLevel(SET.machine);
   let plan = null, from = null;
   for (let i = 0; i < 12; i++) {
     from = { x: (rnd() - 0.5) * 5, y: L.fromY || 1.0, z: -12.4 };

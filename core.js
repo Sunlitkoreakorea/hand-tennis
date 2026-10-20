@@ -61,7 +61,7 @@ function stepBall(b, dt, ev) {
   }
   // 바닥
   if (!b.rolling && b.y < r && b.vy < 0) {
-    const s = b.spin, e = 0.64 + 0.05 * s, k = 0.80 + 0.08 * s;
+    const s = clamp(b.spin, -1, 1), e = 0.64 + 0.05 * s, k = 0.80 + 0.08 * s;
     if (ev) ev.push({ type: 'bounce', x: b.x, z: b.z, vy: b.vy });
     b.y = r; b.vy = -b.vy * e; b.vx *= k; b.vz *= k; b.spin *= 0.4;
     if (b.vy < 0.8) {
@@ -155,7 +155,7 @@ function planServe(o) {
   const tx = o.boxSign * (2.05 - 0.35 * p) + u * 1.8 + gauss(rnd) * 0.3;
   const depth = 4.9 + 1.0 * p + Math.max(0, au - 0.6) * 1.6 + gauss(rnd) * 0.25;
   const tz = o.facing * depth;
-  const v = aim(o.from, tx, tz, 15 + 15 * p, 0, au < 0.9 ? 0.1 : -9);
+  const v = aim(o.from, tx, tz, (15 + 15 * p) * (o.mul || 1), 0, au < 0.9 ? 0.1 : -9);
   return { v, spin: 0, tx, tz, label: timingLabel(o.timing), power: p, kmh: kmh(v) };
 }
 
@@ -163,15 +163,19 @@ const LEVELS = {
   easy:   { id: 'easy',   name: '쉬움',   speed: 5.3, react: 0.32, reach: 0.95, spd: [15, 20], err: 1.1,  miss: 0.17, aimOpen: 0.15, tErr: 0.05,  serveP: 0.3,  fault: 0.14 },
   normal: { id: 'normal', name: '보통',   speed: 6.2, react: 0.22, reach: 1.1,  spd: [16, 22], err: 0.8,  miss: 0.10, aimOpen: 0.45, tErr: 0.03,  serveP: 0.55, fault: 0.09 },
   hard:   { id: 'hard',   name: '어려움', speed: 7.0, react: 0.14, reach: 1.25, spd: [18, 26], err: 0.55, miss: 0.05, aimOpen: 0.75, tErr: 0.015, serveP: 0.8,  fault: 0.06 },
-  // 연습(볼 머신) 전용 초고속 단계. 낮은 데서 치면 네트를 넘기느라 느려지니 높은 곳(fromY)에서 평평하게 내리꽂고, 내 선수(pspd)도 그만큼 빨리 뛴다
-  fast:   { id: 'fast',   name: '매우 빠름', speed: 7.0, react: 0.14, reach: 1.25, spd: [30, 38], err: 0.5,  miss: 0.05, aimOpen: 0.5, tErr: 0.015, serveP: 0.9, fault: 0.05, pspd: 9, flat: true, fromY: 1.9 },
-  insane: { id: 'insane', name: '말도 안 되게 빠름', speed: 7.0, react: 0.14, reach: 1.25, spd: [50, 58], err: 0.4, miss: 0.05, aimOpen: 0.4, tErr: 0.015, serveP: 0.9, fault: 0.05, pspd: 12, flat: true, fromY: 2.9 },
+  // 초고속 단계. 낮은 곳(1m)에서 치면 네트를 넘기느라 속도가 안 나오니, CPU는 공을 더 높은 곳(cy)에서 치고
+  // 강한 탑스핀(spin)으로 내리꽂는다. pspd: 내 선수 이동 속도, serveMul: 서브 속도 배수.
+  // machine: 연습 모드 볼 머신일 때 덮어쓰는 값 (높은 곳(fromY)에서 평평하게 쏜다)
+  fast:   { id: 'fast',   name: '매우 빠름', speed: 7.8, react: 0.10, reach: 1.4, spd: [30, 36], err: 0.5,  miss: 0.06, aimOpen: 0.7, tErr: 0.012, serveP: 0.95, serveMul: 1.15, fault: 0.07, spin: 2, clear: 0.3, cy: 1.5, pspd: 8.6,
+            machine: { spd: [30, 38], flat: true, fromY: 1.9, pspd: 9 } },
+  insane: { id: 'insane', name: '말도 안 되게 빠름', speed: 8.6, react: 0.06, reach: 1.6, spd: [46, 56], err: 0.4, miss: 0.07, aimOpen: 0.8, tErr: 0.01, serveP: 1, serveMul: 1.5, fault: 0.08, spin: 5, clear: 0.1, cy: 1.9, pspd: 10,
+            machine: { spd: [50, 58], flat: true, fromY: 2.9, pspd: 12 } },
 };
 
 /* CPU의 타구. oppX: 상대의 현재 x (빈 곳을 노린다). */
 function planAiShot(o) {
   const L = o.lvl, rnd = o.rnd || Math.random, r = rnd();
-  const spin = L.flat ? 0 : r < 0.4 ? 1 : r < 0.82 ? 0 : -1;
+  const spin = L.flat ? 0 : L.spin != null ? L.spin : r < 0.4 ? 1 : r < 0.82 ? 0 : -1;
   let tx = rnd() < L.aimOpen && Math.abs(o.oppX) > 0.3
     ? -Math.sign(o.oppX) * (2.2 + rnd() * 1.4)
     : (rnd() * 2 - 1) * 3.0;
@@ -179,8 +183,8 @@ function planAiShot(o) {
   tx = clamp(tx + gauss(rnd) * L.err * 0.6, -3.7, 3.7);
   depth = clamp(depth + gauss(rnd) * L.err * 0.5, 5.5, 11.2);
   let speed = L.spd[0] + rnd() * (L.spd[1] - L.spd[0]);
-  if (!L.flat) { if (spin < 0) speed *= 0.75; else if (spin > 0) speed *= 0.9; }
-  let minClear = spin > 0 ? 0.45 : 0.18, miss = null;
+  if (!L.flat && L.spin == null) { if (spin < 0) speed *= 0.75; else if (spin > 0) speed *= 0.9; }
+  let minClear = L.clear != null ? L.clear : spin > 0 ? 0.45 : 0.18, miss = null;
   if (rnd() < L.miss) {
     const k = rnd();
     if (k < 0.4) { miss = 'long'; depth = 12.2 + rnd() * 1.2; }
@@ -319,8 +323,11 @@ class SwingDetector {
   }
 }
 
+/* 연습 모드 볼 머신용: 기본 값에 machine 덮어쓰기를 얹고 실수는 없앤다 */
+function machineLevel(key) { const L = LEVELS[key] || LEVELS.normal; return Object.assign({}, L, L.machine || {}, { miss: 0 }); }
+
 const API = {
-  C, LEVELS, clamp, gauss, netHeight, accelY, makeBall, copyBall, stepBall, findContact,
+  C, LEVELS, machineLevel, clamp, gauss, netHeight, accelY, makeBall, copyBall, stepBall, findContact,
   solveShot, netClear, aim, timingLabel, planSwingShot, planServe, planAiShot, Score, Judge, SwingDetector,
 };
 root.TennisCore = API;

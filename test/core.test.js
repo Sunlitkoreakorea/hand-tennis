@@ -143,7 +143,7 @@ for (const key of ['easy', 'normal', 'hard']) {
 {
   const med = a => a.slice().sort((x, y) => x - y)[a.length >> 1], speeds = {};
   for (const key of ['hard', 'fast', 'insane']) {
-    const L = Object.assign({}, LEVELS[key], { miss: 0 }), rnd = rng(7), kmhs = []; let inN = 0, N = 300;
+    const L = T.machineLevel(key), rnd = rng(7), kmhs = []; let inN = 0, N = 300;
     for (let i = 0; i < N; i++) {
       const from = { x: (rnd() - 0.5) * 5, y: L.fromY || 1.0, z: -12.4 };
       const p = T.planAiShot({ lvl: L, oppX: 0, from, facing: 1, rnd });
@@ -159,6 +159,34 @@ for (const key of ['easy', 'normal', 'hard']) {
   console.log('머신 공 속도(중앙값 km/h):', speeds);
   ok(speeds.fast > speeds.hard + 25 && speeds.insane > speeds.fast + 40, '매우 빠름 < 말도 안 되게 빠름 속도 순서');
   ok(speeds.insane > 170, '말도 안 되게 빠름은 170km/h 이상');
+}
+
+// 8-3) CPU 대전 초고속 난이도: 사람 타구를 받아쳐서 코트 안에 넣고, 내가 닿을 수 있고, 단계가 오를수록 빠르다
+{
+  const med = a => a.slice().sort((x, y) => x - y)[a.length >> 1], speeds = {};
+  for (const key of ['hard', 'fast', 'insane']) {
+    const L = LEVELS[key], rnd = rng(11), kmhs = []; let inN = 0, reach = 0, N = 0;
+    for (let i = 0; i < 900; i++) {
+      const from = { x: (rnd() - 0.5) * 6, y: 1.0, z: 11.5 };
+      const hp = T.planSwingShot({ from, power: 0.2 + 0.7 * rnd(), spin: [1, 0, -1][i % 3], timing: (rnd() - 0.5) * 0.14, side: rnd() < 0.5 ? 1 : -1, facing: -1, rnd });
+      const b = T.makeBall(from.x, from.y, from.z); b.vx = hp.v.vx; b.vy = hp.v.vy; b.vz = hp.v.vz; b.spin = hp.spin;
+      const c = T.findContact(b, -1, L.cy ? { idealY: L.cy } : undefined);
+      if (!c || c.out || c.y > 2.3) continue;
+      const f2 = { x: c.x, y: Math.max(0.45, Math.min(2.2, c.y)), z: c.z };
+      const p = T.planAiShot({ lvl: L, oppX: (rnd() - 0.5) * 5, from: f2, facing: 1, rnd });
+      if (p.miss) continue; N++;
+      const b2 = T.makeBall(f2.x, f2.y, f2.z); b2.vx = p.v.vx; b2.vy = p.v.vy; b2.vz = p.v.vz; b2.spin = p.spin;
+      const c2 = T.findContact(T.copyBall(b2), 1);
+      const j = new Judge(); j.hit(1);
+      const res = fly(b2, j);
+      if (j.bounces >= 1 && !(res && res.kind === 'point' && res.winner === 0)) { inN++; kmhs.push(p.kmh); if (c2 && !c2.out && c2.y <= 2.4) reach++; }
+    }
+    speeds[key] = med(kmhs);
+    ok(inN / N > 0.9, 'CPU ' + key + ' 정상 타구가 90% 이상 코트 안 (' + (inN / N * 100).toFixed(0) + '%)');
+    ok(reach / inN > 0.9, 'CPU ' + key + ' 타구에 내가 닿을 수 있다 (' + (reach / inN * 100).toFixed(0) + '%)');
+  }
+  console.log('CPU 난이도 공 속도(중앙값 km/h):', speeds);
+  ok(speeds.fast > speeds.hard + 25 && speeds.insane > speeds.fast + 30, 'CPU 어려움 < 매우 빠름 < 말도 안 되게 빠름');
 }
 
 // 9) 스윙 판정: 속도 단위(손 크기/초) — 손 크기 0.1, 0.3초에 화면 폭의 0.6만큼 휘두름
