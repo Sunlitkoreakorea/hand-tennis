@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>손 테니스</title>
+<meta name="description" content="웹캠 앞에서 팔을 휘둘러 치는 Wii 스타일 테니스. 손 인식(MediaPipe)과 Three.js로 만든 웹 게임.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%23d8f23a'/%3E%3Cpath d='M9 18c15 7 15 21 0 28M55 18c-15 7-15 21 0 28' fill='none' stroke='%23fff' stroke-width='4'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #0d2238; --paper: #fff; --sky: #27b5f2; --coral: #ff6a3d; --sun: #ffc93c; --mint: #2fbf86; --line: #d6e4ee; --ball: #d8f23a;
+  --font: 'Jua', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #bfe3f4; color: var(--ink); font-family: var(--font); -webkit-user-select: none; user-select: none; }
+[hidden] { display: none !important; }
+button { font-family: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; }
+button:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* ---------- 화면(메뉴) ---------- */
+.screen { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 16px; background: linear-gradient(180deg, rgba(13,34,56,.10), rgba(13,34,56,.55)); overflow: auto; }
+.card { width: 100%; max-width: 940px; background: var(--paper); border-radius: 28px; padding: 28px 32px; box-shadow: 0 18px 60px rgba(13,34,56,.35); }
+.card.narrow { max-width: 560px; text-align: center; }
+h1 { margin: 0; font-size: clamp(40px, 7vw, 64px); line-height: 1.05; letter-spacing: -.01em; }
+h1 .ball { display: inline-block; width: .78em; height: .78em; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f1ff7a, var(--ball) 55%, #a9c21b); vertical-align: -.04em; margin-right: .12em; box-shadow: inset -3px -4px 0 rgba(0,0,0,.08); position: relative; }
+h1 .ball::before, h1 .ball::after { content: ''; position: absolute; inset: 8% -22%; border: .09em solid #fff; border-radius: 50%; clip-path: inset(0 62% 0 0); }
+h1 .ball::after { clip-path: inset(0 0 0 62%); }
+h2 { margin: 0 0 6px; font-size: 26px; }
+p.lead { margin: 10px 0 22px; font-size: 19px; line-height: 1.5; color: #35506b; }
+p.note { margin: 14px 0 0; font-size: 15px; color: #5d7690; line-height: 1.5; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 56px; padding: 0 28px; border-radius: 999px; font-size: 21px; background: #e8f1f8; transition: transform .12s, background .12s, box-shadow .12s; }
+.btn:hover, .btn.hover { transform: translateY(-2px); background: #dcebf6; }
+.btn:active { transform: translateY(0); }
+.btn.primary { background: var(--sky); color: #fff; box-shadow: 0 6px 0 #1a8fc4; }
+.btn.primary:hover, .btn.primary.hover { background: #3cc1fa; }
+.btn.sun { background: var(--sun); box-shadow: 0 6px 0 #e0a512; }
+.btn.sun:hover, .btn.sun.hover { background: #ffd35c; }
+.btn:disabled { opacity: .4; pointer-events: none; }
+.btn.big { min-height: 68px; font-size: 24px; padding: 0 36px; }
+.stack { display: flex; flex-direction: column; gap: 14px; align-items: stretch; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: center; }
+.err { margin-top: 14px; padding: 12px 16px; border-radius: 14px; background: #fff0eb; color: #b53a15; font-size: 16px; line-height: 1.5; text-align: left; }
+
+/* 메뉴: 왼쪽 목록 / 오른쪽 상세 */
+.split { display: grid; grid-template-columns: 270px 1fr; gap: 24px; margin-top: 18px; }
+.list { display: flex; flex-direction: column; gap: 10px; }
+.item { text-align: left; padding: 16px 18px; border-radius: 20px; background: #f1f6fa; border: 3px solid transparent; font-size: 22px; transition: background .12s, border-color .12s; }
+.item small { display: block; margin-top: 3px; font-size: 14px; color: #5d7690; font-family: inherit; }
+.item:hover, .item.hover { background: #e6f0f7; }
+.item[aria-pressed="true"] { background: #e3f5ff; border-color: var(--sky); }
+.detail { background: #f7fafc; border-radius: 22px; padding: 20px 22px; display: flex; flex-direction: column; gap: 16px; }
+.field { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.field > label, .field > span.k { font-size: 19px; min-width: 96px; }
+.pills { display: inline-flex; background: #e6eef5; border-radius: 999px; padding: 4px; gap: 2px; }
+.pills button { min-height: 44px; padding: 0 18px; border-radius: 999px; font-size: 18px; transition: background .12s; }
+.pills button:hover, .pills button.hover { background: rgba(255,255,255,.7); }
+.pills button[aria-pressed="true"] { background: var(--paper); box-shadow: 0 2px 6px rgba(13,34,56,.18); color: var(--ink); }
+.stepper { display: inline-flex; align-items: center; gap: 10px; }
+.stepper button { width: 46px; height: 46px; border-radius: 50%; background: #e6eef5; font-size: 26px; line-height: 1; }
+.stepper button:hover, .stepper button.hover { background: #d4e4f0; }
+.stepper output { min-width: 42px; text-align: center; font-size: 26px; }
+.switch { width: 64px; height: 36px; border-radius: 999px; background: #c4d4e2; position: relative; transition: background .15s; }
+.switch::after { content: ''; position: absolute; top: 4px; left: 4px; width: 28px; height: 28px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: transform .15s; }
+.switch[aria-checked="true"] { background: var(--mint); }
+.switch[aria-checked="true"]::after { transform: translateX(28px); }
+.desc { font-size: 16px; color: #4d6781; line-height: 1.5; margin: 0; }
+.menu-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 4px; flex-wrap: wrap; }
+.legend { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 16px; color: #35506b; }
+.legend b { color: var(--ink); }
+
+/* 카메라 미리보기 */
+#camBox { position: fixed; left: 14px; bottom: 14px; width: 210px; aspect-ratio: 4/3; border-radius: 18px; overflow: hidden; border: 3px solid #fff; background: #0d2238; box-shadow: 0 8px 24px rgba(13,34,56,.35); z-index: 12; }
+#camBox.in-slot { position: relative; left: auto; bottom: auto; width: 100%; max-width: 440px; margin: 0 auto; z-index: auto; }
+#camBox video, #camBox canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+#camMsg { position: absolute; left: 0; right: 0; bottom: 0; padding: 4px 8px; background: rgba(13,34,56,.7); color: #fff; font-size: 13px; text-align: center; }
+#camBox.in-slot #camMsg { font-size: 16px; padding: 7px 10px; }
+#camMeter { position: absolute; left: 8px; right: 8px; top: 8px; height: 8px; border-radius: 4px; background: rgba(255,255,255,.25); overflow: hidden; }
+#camMeter i { display: block; height: 100%; width: 0; background: var(--sun); border-radius: 4px; transition: width .08s; }
+.dots { display: flex; gap: 14px; justify-content: center; margin: 14px 0 4px; }
+.dots i { width: 22px; height: 22px; border-radius: 50%; background: #d6e4ee; transition: background .2s, transform .2s; }
+.dots i.on { background: var(--sun); transform: scale(1.25); }
+#camSlot { margin-top: 10px; }
+
+/* ---------- HUD ---------- */
+#hud { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
+#hud button { pointer-events: auto; }
+#board { position: absolute; left: 14px; top: 14px; min-width: 210px; border-radius: 18px; overflow: hidden; background: rgba(13,34,56,.86); color: #fff; box-shadow: 0 8px 24px rgba(13,34,56,.3); font-size: 22px; }
+#board .r { display: grid; grid-template-columns: 1fr 14px 34px 58px; align-items: center; gap: 4px; padding: 7px 12px; }
+#board .r + .r { border-top: 1px solid rgba(255,255,255,.12); }
+#board .r.you { background: rgba(39,181,242,.28); }
+#board .r.cpu { background: rgba(255,106,61,.24); }
+#board .n { white-space: nowrap; }
+#board .g { text-align: center; opacity: .85; }
+#board .p { text-align: center; color: var(--sun); font-size: 26px; }
+#board .srv { width: 10px; height: 10px; border-radius: 50%; background: var(--ball); box-shadow: 0 0 0 2px rgba(255,255,255,.6); }
+#board .hd { font-size: 12px; opacity: .6; padding: 5px 12px 0; display: flex; justify-content: space-between; }
+#pboard { position: absolute; left: 14px; top: 14px; border-radius: 18px; background: rgba(13,34,56,.86); color: #fff; padding: 12px 18px; display: grid; gap: 4px; font-size: 20px; box-shadow: 0 8px 24px rgba(13,34,56,.3); }
+#pboard b { color: var(--sun); font-size: 30px; }
+#speed { position: absolute; right: 16px; top: 16px; padding: 8px 18px; border-radius: 16px; background: rgba(13,34,56,.8); color: #fff; font-size: 24px; opacity: 0; transform: translateY(-6px); transition: opacity .2s, transform .2s; }
+#speed.on { opacity: 1; transform: none; }
+#speed small { font-size: 14px; opacity: .75; margin-left: 4px; }
+#banner { position: absolute; left: 0; right: 0; top: 24%; text-align: center; opacity: 0; transform: scale(.6); pointer-events: none; }
+#banner.show { opacity: 1; transform: scale(1); transition: opacity .15s, transform .25s cubic-bezier(.2,1.6,.4,1); }
+#banner .big { display: inline-block; font-size: clamp(44px, 9vw, 96px); color: #fff; -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; text-shadow: 0 6px 0 rgba(13,34,56,.35); letter-spacing: .02em; }
+#banner.good .big { color: var(--sun); }
+#banner.bad .big { color: #ff8f73; }
+#banner .sub { display: block; margin-top: 6px; font-size: clamp(20px, 3vw, 30px); color: #fff; text-shadow: 0 2px 6px rgba(13,34,56,.7); }
+#timing { position: absolute; left: 0; right: 0; bottom: 26%; text-align: center; font-size: 34px; color: #fff; text-shadow: 0 3px 8px rgba(13,34,56,.7); opacity: 0; transition: opacity .2s; pointer-events: none; }
+#timing.on { opacity: 1; }
+#timing.perfect { color: var(--sun); }
+#hint { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); max-width: calc(100vw - 460px); padding: 10px 22px; border-radius: 999px; background: rgba(13,34,56,.82); color: #fff; font-size: 20px; text-align: center; transition: opacity .25s; }
+#hint:empty { opacity: 0; }
+#hbtns { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 10px; }
+.ib { width: 52px; height: 52px; border-radius: 50%; background: rgba(13,34,56,.82); color: #fff; font-size: 22px; display: flex; align-items: center; justify-content: center; }
+.ib:hover { background: rgba(13,34,56,.95); }
+.ib[aria-pressed="true"] { background: var(--coral); }
+#cursor { position: fixed; z-index: 60; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; border: 4px solid #fff; background: conic-gradient(var(--sun) calc(var(--p, 0) * 1turn), rgba(255,255,255,.16) 0); box-shadow: 0 0 0 2px rgba(13,34,56,.5), 0 6px 16px rgba(13,34,56,.4); pointer-events: none; display: none; }
+#cursor::after { content: ''; position: absolute; inset: 9px; border-radius: 50%; background: rgba(13,34,56,.55); }
+.res-big { font-size: clamp(44px, 8vw, 72px); margin: 4px 0 2px; }
+.res-score { font-size: 34px; margin-bottom: 14px; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 8px 0 22px; }
+.stats div { background: #f1f6fa; border-radius: 16px; padding: 12px 6px; font-size: 14px; color: #5d7690; }
+.stats b { display: block; font-size: 28px; color: var(--ink); font-weight: 400; margin-bottom: 2px; }
+#nogl { position: fixed; inset: 0; z-index: 99; display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; background: #0d2238; color: #fff; font-size: 22px; line-height: 1.6; }
+
+@media (max-width: 760px) {
+  .split { grid-template-columns: 1fr; }
+  .card { padding: 22px 18px; }
+  #hint { max-width: calc(100vw - 32px); bottom: 190px; font-size: 17px; }
+  #camBox { width: 150px; }
+  #board { font-size: 18px; min-width: 180px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="hud" hidden>
+  <div id="board">
+    <div class="hd"><span>점수</span><span id="bdSet"></span></div>
+    <div class="r you"><span class="n">나</span><span class="srv" id="srvY"></span><span class="g" id="gY">0</span><span class="p" id="pY">0</span></div>
+    <div class="r cpu"><span class="n">CPU</span><span class="srv" id="srvC"></span><span class="g" id="gC">0</span><span class="p" id="pC">0</span></div>
+  </div>
+  <div id="pboard" hidden>
+    <div>연속 성공 <b id="pbStreak">0</b></div>
+    <div>최고 기록 <b id="pbBest" style="font-size:22px">0</b></div>
+  </div>
+  <div id="speed"><span id="spdVal">0</span><small>km/h</small></div>
+  <div id="banner"><span class="big" id="bnBig"></span><span class="sub" id="bnSub"></span></div>
+  <div id="timing"></div>
+  <div id="hint"></div>
+  <div id="hbtns">
+    <button class="ib" id="btnMute" aria-label="소리 끄기" aria-pressed="false" title="소리 (M)">♪</button>
+    <button class="ib" id="btnPause" aria-label="일시정지" title="일시정지 (Esc)">Ⅱ</button>
+  </div>
+</div>
+
+<div id="camBox" hidden>
+  <video id="camVideo" muted playsinline></video>
+  <canvas id="camMark" width="320" height="240"></canvas>
+  <div id="camMeter"><i id="camPow"></i></div>
+  <div id="camMsg"></div>
+</div>
+
+<!-- 시작 -->
+<section class="screen" id="scr-title">
+  <div class="card narrow">
+    <h1><span class="ball"></span>손 테니스</h1>
+    <p class="lead">웹캠 앞에서 테니스 치듯 팔을 휘둘러 보세요.<br>달리기는 알아서 해 줘요. 휘두르기만 하면 돼요!</p>
+    <div class="stack">
+      <button class="btn primary big" id="btnCam">📷 카메라 켜고 시작</button>
+      <button class="btn" id="btnNoCam">마우스·키보드로 해보기</button>
+    </div>
+    <div class="err" id="titleErr" hidden></div>
+    <p class="note">카메라 영상은 이 컴퓨터 안에서만 쓰이고 어디로도 전송되지 않아요.<br>처음엔 손 인식 모델(약 8MB)을 내려받느라 몇 초 걸려요.</p>
+  </div>
+</section>
+
+<!-- 손 맞추기 -->
+<section class="screen" id="scr-calib" hidden>
+  <div class="card narrow">
+    <h2>손 맞추기</h2>
+    <p class="lead" id="calMsg" style="margin:6px 0 4px">손바닥을 카메라에 보여 주세요</p>
+    <div id="camSlot"></div>
+    <div class="dots" id="calDots"><i></i><i></i><i></i></div>
+    <p class="note" style="margin:2px 0 18px">테니스 치듯 팔을 크게 <b>3번</b> 휘둘러 주세요</p>
+    <div class="row">
+      <button class="btn" id="btnCalSkip">건너뛰기</button>
+      <button class="btn primary" id="btnCalNext" disabled>다음 ▶</button>
+    </div>
+  </div>
+</section>
+
+<!-- 모드 고르기 -->
+<section class="screen" id="scr-menu" hidden>
+  <div class="card">
+    <h1 style="font-size:clamp(32px,5vw,44px)"><span class="ball"></span>손 테니스</h1>
+    <div class="split">
+      <div class="list">
+        <button class="item" id="itMatch" aria-pressed="true">CPU 대전<small>단식 · 점수는 진짜 테니스처럼</small></button>
+        <button class="item" id="itPractice" aria-pressed="false">연습<small>볼 머신이 공을 보내 줘요</small></button>
+      </div>
+      <div class="detail">
+        <div id="dMatch" class="detail" style="padding:0;background:none">
+          <div class="field"><span class="k">난이도</span>
+            <div class="pills" data-key="level"><button data-val="easy">쉬움</button><button data-val="normal">보통</button><button data-val="hard">어려움</button></div></div>
+          <div class="field"><span class="k">경기 길이</span>
+            <div class="pills" data-key="bestOf"><button data-val="1">1게임</button><button data-val="3">3게임</button><button data-val="5">5게임</button></div></div>
+        </div>
+        <div id="dPractice" class="detail" style="padding:0;background:none" hidden>
+          <div class="field"><span class="k">공 속도</span>
+            <div class="pills" data-key="machine"><button data-val="easy">느림</button><button data-val="normal">보통</button><button data-val="hard">빠름</button></div></div>
+          <p class="desc">공이 오면 팔을 휘둘러 상대 코트에 넣어 보세요. 연속으로 몇 번 성공하는지 세요.</p>
+        </div>
+        <hr style="border:0;border-top:2px dashed var(--line);width:100%;margin:0">
+        <div class="field"><span class="k">라켓 손</span>
+          <div class="pills" data-key="hs"><button data-val="1">오른손</button><button data-val="-1">왼손</button></div></div>
+        <div class="field" id="fSens"><span class="k">감도</span>
+          <div class="stepper"><button id="sensDown" aria-label="감도 낮추기">−</button><output id="sensVal">5</output><button id="sensUp" aria-label="감도 높이기">＋</button></div></div>
+        <div class="field"><span class="k">소리</span><button class="switch" id="swSound" role="switch" aria-checked="true" aria-label="소리"></button></div>
+      </div>
+    </div>
+    <div class="menu-foot">
+      <button class="btn" id="btnRecal">✋ 손 다시 맞추기</button>
+      <button class="btn sun big" id="btnStart">시작 ▶</button>
+    </div>
+    <p class="note" id="menuHowto"></p>
+  </div>
+</section>
+
+<!-- 일시정지 -->
+<section class="screen" id="scr-pause" hidden style="z-index:40">
+  <div class="card narrow">
+    <h2>잠깐 멈춤</h2>
+    <div class="stack" style="margin-top:16px">
+      <button class="btn primary big" id="btnResume">계속하기</button>
+      <button class="btn" id="btnQuit">메뉴로 나가기</button>
+    </div>
+  </div>
+</section>
+
+<!-- 결과 -->
+<section class="screen" id="scr-result" hidden style="z-index:40">
+  <div class="card narrow">
+    <div class="res-big" id="resTitle"></div>
+    <div class="res-score" id="resScore"></div>
+    <div class="stats" id="resStats"></div>
+    <div class="stack">
+      <button class="btn primary big" id="btnAgain">한 번 더</button>
+      <button class="btn" id="btnToMenu">메뉴로</button>
+    </div>
+  </div>
+</section>
+
+<div id="cursor"></div>
+<div id="nogl" hidden>이 브라우저에서는 3D 화면(WebGL)을 쓸 수 없어요.<br>최신 Chrome이나 Edge로 열어 주세요.</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="core.js"></script>
+<script src="audio.js"></script>
+<script src="hands.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
