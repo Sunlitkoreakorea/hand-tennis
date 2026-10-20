@@ -14,7 +14,7 @@ const QS = new URLSearchParams(location.search);
 const LAT = QS.has('lat') ? +QS.get('lat') : 0.07;   // 카메라가 손을 보고 알려 주기까지 걸리는 시간(초)
 
 /* ================================================================ 설정 */
-const SET = { hs: 1, sens: 5, bestOf: 3, level: 'normal', machine: 'normal', sound: true, mode: 'match', calA: 0 };
+const SET = { hs: 1, sens: 5, bestOf: 3, level: 'normal', machine: 'normal', sound: true, mode: 'match', calA: 0, gauge: true };
 try { Object.assign(SET, JSON.parse(localStorage.getItem('hand-tennis') || '{}')); } catch (_) { /* 저장 못 해도 괜찮다 */ }
 function save() { try { localStorage.setItem('hand-tennis', JSON.stringify(SET)); } catch (_) { /* 무시 */ } }
 
@@ -299,7 +299,7 @@ const S = {
   plan: [null, null], rally: 0, next: '', nextAt: 0, tossT: 0, waitT: 0, cpuTossAt: 0, cpuServeAt: 0, machineAt: 0,
   stats: { maxKmh: 0, longest: 0, aces: 0 }, streak: 0, best: 0, pointLog: [],
   cam: { on: false }, sd: new TC.SwingDetector(), msd: new TC.SwingDetector({ thr: 14 }), hand: null,
-  shake: 0, cheer: 0, camT: 0, said: 0,
+  shake: 0, cheer: 0, camT: 0, said: 0, pad: false, charge: null, padReleasing: false, lastPower: 0,
   now() { return this.simT + this.acc; },
 };
 
@@ -334,6 +334,22 @@ function hudPractice() { $('pbStreak').textContent = S.streak; $('pbBest').textC
 /* ================================================================ 경기 진행 */
 const EV = [];
 
+/* 조작 방식: 'cam'(손) / 'pad'(터치패드) / 'key'(키보드·마우스) */
+function inputMode() { return S.cam.on ? 'cam' : S.pad ? 'pad' : 'key'; }
+const useGauge = () => SET.gauge && inputMode() === 'key';
+function hintText(kind) {
+  const m = inputMode(), g = useGauge();
+  if (kind === 'serve') {
+    return m === 'cam' ? (S.faults ? '두 번째 서브! 손을 위로 휙 → 내려치기' : '손을 위로 휙 들어 토스 → 공이 내려올 때 내려치기')
+      : m === 'pad' ? (S.faults ? '두 번째 서브! 탭으로 토스 → 한 번 더 탭' : '탭(클릭)으로 토스 → 공이 내려올 때 한 번 더 탭')
+      : g ? '스페이스: 토스 → 다시 꾹 눌러 게이지를 채우고 공이 내려올 때 떼기' : '스페이스: 토스 → 한 번 더: 서브';
+  }
+  if (kind === 'toss') return m === 'cam' ? '공이 내려올 때 휘둘러요!' : m === 'pad' ? '지금 탭!' : g ? '꾹 눌러 채우고 → 지금 떼요!' : '지금 스페이스!';
+  return m === 'cam' ? '공이 오면 팔을 휘둘러요. 위로 쳐올리면 탑스핀!'
+    : m === 'pad' ? '공이 오면 탭! 위로 쓸면 탑스핀, 두 손가락 탭은 슬라이스'
+    : g ? '공이 오면 스페이스를 꾹 눌렀다 떼요 (↑ 누르고 치면 탑스핀)' : '공이 오면 스페이스! (↑ 누르고 치면 탑스핀)';
+}
+
 function beginPoint() { S.faults = 0; beginServe(); }
 
 function beginServe() {
@@ -349,7 +365,7 @@ function beginServe() {
   Object.assign(S.ball, { vx: 0, vy: 0, vz: 0, spin: 0, netHit: false, rolling: false });
   S.visOff.set(0, 0, 0);
   if (srv === 1) { S.cpuTossAt = S.simT + 1.3 + rnd() * 0.7; setHint('상대 서브예요. 받을 준비!'); }
-  else setHint(S.cam.on ? (S.faults ? '두 번째 서브! 손을 위로 휙 → 내려치기' : '손을 위로 휙 들어 토스 → 공이 내려올 때 내려치기') : '스페이스: 토스 → 한 번 더: 서브');
+  else setHint(hintText('serve'));
 }
 
 function heldPos(by) {
@@ -364,7 +380,7 @@ function toss(by) {
   S.held = false; S.phase = 'toss'; S.tossT = S.simT; av.anim.toss = 0;
   SFX.whoosh(0.2); setHint('');
   if (by === 1) S.cpuServeAt = S.simT + C.TOSS_IDEAL + TC.gauss(rnd) * S.lvl.tErr + (rnd() < S.lvl.fault ? (rnd() < 0.5 ? -1 : 1) * 0.3 : 0);
-  else setHint(S.cam.on ? '공이 내려올 때 휘둘러요!' : '지금 스페이스!');
+  else setHint(hintText('toss'));
 }
 
 function serveFire(by, tau, power) {
@@ -424,6 +440,7 @@ function cpuSwing() {
 
 function humanSwing(ev, tClock) {
   const pl = S.plan[0], power = clamp(ev.power, 0, 1);
+  S.lastPower = power;
   const live = S.phase === 'rally' && pl && S.judge.hitter === 1;
   startSwing(P, pl ? (pl.ballSide === P.racketSide ? 'fh' : 'bh') : 'fh', power, ev.spin);
   SFX.whoosh(power);
@@ -446,6 +463,7 @@ function humanSwing(ev, tClock) {
 
 function humanServeSwing(ev, tClock) {
   const tau = tClock - (S.tossT + C.TOSS_IDEAL), power = 0.25 + 0.75 * clamp(ev.power, 0, 1);
+  S.lastPower = power;
   startSwing(P, 'serve', power, 0); SFX.whoosh(power);
   if (tau < -0.34 || tau > 0.30 || S.ball.y < 1.2) return;
   serveFire(0, tau, power);
@@ -527,7 +545,7 @@ function startPractice() {
   S.mode = 'practice'; S.streak = 0; S.best = 0; S.rally = 0;
   S.phase = 'machineWait'; S.machineAt = S.simT + 1.2; S.ballVis = false; S.plan = [null, null];
   $('board').hidden = true; $('pboard').hidden = false; hudPractice();
-  setHint(S.cam.on ? '공이 오면 팔을 휘둘러요. 위로 쳐올리면 탑스핀!' : '공이 오면 스페이스! (↑ 누르고 치면 탑스핀)');
+  setHint(hintText('practice'));
 }
 function feedBall() {
   const L = TC.machineLevel(SET.machine);
@@ -619,23 +637,68 @@ function applySens() {
 }
 
 const keys = { up: false, down: false };
+const keySpin = () => keys.up ? 1 : keys.down ? -1 : 0;
+const keyEvent = power => ({ t: performance.now() / 1000, speed: 30, power, spin: keySpin(), dir: 1 });
+const isHitKey = e => e.code === 'Space' || e.code === 'Enter';
+
+/* 파워 게이지: 누르면 차기 시작하고, 떼는 순간의 값이 파워가 된다. 타이밍도 뗄 때 정해진다 */
+function chargeStart() { S.charge = { t0: performance.now() / 1000 }; }
+function chargeCancel() { S.charge = null; }
+function chargeRelease() {
+  const c = S.charge; S.charge = null;
+  if (!c || S.paused) return;
+  onSwing(keyEvent(clamp(TC.gaugeAt(performance.now() / 1000 - c.t0), 0.04, 1)), 'key');
+}
+
 addEventListener('keydown', e => {
   if (e.code === 'ArrowUp') keys.up = true;
   if (e.code === 'ArrowDown') keys.down = true;
   if (e.repeat) return;
   if (e.code === 'Escape') { if (inGame() || S.paused) setPaused(!S.paused); return; }
   if (e.code === 'KeyM') { toggleMute(); return; }
-  if ((e.code === 'Space' || e.code === 'Enter') && inGame() && !S.paused) {
+  if (isHitKey(e) && inGame() && !S.paused) {
     e.preventDefault();
-    onSwing({ t: performance.now() / 1000, speed: 30, power: 0.7, spin: keys.up ? 1 : keys.down ? -1 : 0, dir: 1 }, 'key');
+    if (useGauge() && (S.phase === 'rally' || S.phase === 'toss')) chargeStart();
+    else onSwing(keyEvent(0.7), 'key');
   }
 });
-addEventListener('keyup', e => { if (e.code === 'ArrowUp') keys.up = false; if (e.code === 'ArrowDown') keys.down = false; });
+addEventListener('keyup', e => {
+  if (e.code === 'ArrowUp') keys.up = false;
+  if (e.code === 'ArrowDown') keys.down = false;
+  if (isHitKey(e) && inGame()) { e.preventDefault(); if (S.charge) chargeRelease(); }
+});
+addEventListener('blur', chargeCancel);
+
+/* 터치패드: 포인터를 잠가서(커서가 숨고 끝없이 쓸 수 있다) 상대 움직임으로 휘두르기를 감지한다.
+   잠금이 안 되는 환경에서는 일반 마우스 좌표로 같은 일을 한다 */
+const glc = $('gl'), pad = { x: 0, y: 0 };
+const padLocked = () => document.pointerLockElement === glc;
+function padLock() {
+  if (!S.pad || !glc.requestPointerLock) return;
+  try { const p = glc.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (_) { /* 잠금 없이 계속 */ }
+}
+function padUnlock() { if (padLocked()) { S.padReleasing = true; document.exitPointerLock(); } }
+document.addEventListener('pointerlockchange', () => {
+  S.msd.reset();
+  if (!padLocked()) { if (S.padReleasing) S.padReleasing = false; else if (S.pad && inGame() && !S.paused) setPaused(true); }   // Esc로 잠금이 풀리면 일시정지
+});
+
 addEventListener('pointermove', e => {
-  if (S.cam.on || !inGame() || e.pointerType === 'touch') return;
-  const ev = S.msd.feed(performance.now() / 1000, e.clientX / innerHeight, e.clientY / innerHeight, 0.08);
+  if (S.cam.on || !inGame() || S.paused || e.pointerType === 'touch') return;
+  let x, y;
+  if (padLocked()) { pad.x += (e.movementX || 0) / innerHeight; pad.y += (e.movementY || 0) / innerHeight; x = pad.x; y = pad.y; }
+  else { x = e.clientX / innerHeight; y = e.clientY / innerHeight; }
+  const ev = S.msd.feed(performance.now() / 1000, x, y, 0.08);
   if (ev) onSwing(ev, 'mouse');
 });
+addEventListener('pointerdown', e => {                      // 터치패드 탭(클릭) = 치기, 두 손가락 탭(오른쪽 클릭) = 슬라이스
+  if (!S.pad || !inGame() || S.paused || e.pointerType === 'touch') return;
+  if (e.target.closest && e.target.closest('button')) return;
+  e.preventDefault();
+  const right = e.button === 2;
+  onSwing({ t: performance.now() / 1000, speed: 30, power: right ? 0.5 : 0.65, spin: right ? -1 : keySpin(), dir: 1 }, 'key');
+});
+addEventListener('contextmenu', e => { if (S.pad && inGame()) e.preventDefault(); });
 
 /* ---- 손 ---- */
 const camMark = $('camMark'), cmx = camMark.getContext('2d');
@@ -721,7 +784,7 @@ async function startCamera(picked) {
       else throw e;
     }
     SET.camId = Hands.deviceId || ''; save();
-    S.cam.on = true;
+    S.cam.on = true; S.pad = false;
     applySens();
     goCalib();
   } catch (e) {
@@ -788,6 +851,7 @@ function leaveCalib() { placeCamBox(false); goMenu(); }
 /* ---- 메뉴 ---- */
 function goMenu() {
   S.phase = 'menu'; S.paused = false; S.ballVis = false; S.held = false;
+  chargeCancel(); padUnlock();
   $('hud').hidden = true; setHint('');
   if (S.cam.on) $('camBox').hidden = false;
   P.x = P.tx = HOME.P[0]; P.z = P.tz = HOME.P[1]; Q.x = Q.tx = HOME.Q[0]; Q.z = Q.tz = HOME.Q[1];
@@ -804,9 +868,16 @@ function refreshMenu() {
   $('sensVal').textContent = SET.sens;
   $('swSound').setAttribute('aria-checked', String(SET.sound));
   $('btnRecal').hidden = !S.cam.on;
-  $('menuHowto').textContent = S.cam.on
+  const m = inputMode();
+  $('fGauge').hidden = m !== 'key'; $('fSens').hidden = m === 'key';
+  $('swGauge').setAttribute('aria-checked', String(SET.gauge));
+  $('menuHowto').textContent = m === 'cam'
     ? '공이 오면 팔을 휘둘러요. 일찍 치면 한쪽, 늦게 치면 반대쪽으로 가요. 세게 휘두를수록 빠르고, 위로 쳐올리면 탑스핀, 아래로 깎으면 슬라이스예요. 버튼은 손을 0.9초 올려 두면 눌려요.'
-    : '스페이스(또는 마우스를 휙 휘두르기)로 쳐요. ↑를 누르고 치면 탑스핀, ↓는 슬라이스. 서브는 스페이스로 토스 → 한 번 더 스페이스.';
+    : m === 'pad'
+      ? '터치패드를 탭(클릭)하거나 휙 쓸어서 쳐요. 쓸어 칠 땐 빠를수록 세고, 위로 쓸면 탑스핀, 아래로 쓸면 슬라이스예요. 두 손가락 탭은 슬라이스. 게임 중엔 커서가 숨겨지고 Esc로 일시정지해요. 서브는 탭으로 토스 → 한 번 더 탭.'
+      : SET.gauge
+        ? '스페이스를 꾹 누르면 파워 게이지가 차오르고, 떼는 순간 쳐요. 가득 찼을 때 떼면 가장 세지만 공이 오는 타이밍에도 맞춰야 해요. ↑를 누르고 떼면 탑스핀, ↓는 슬라이스. 서브는 스페이스로 토스 → 다시 꾹 눌렀다 떼기.'
+        : '스페이스(또는 마우스를 휙 휘두르기)로 쳐요. ↑를 누르고 치면 탑스핀, ↓는 슬라이스. 서브는 스페이스로 토스 → 한 번 더 스페이스.';
   save();
 }
 document.querySelectorAll('.pills').forEach(g => g.addEventListener('click', e => {
@@ -820,13 +891,15 @@ $('itPractice').addEventListener('click', () => { SET.mode = 'practice'; SFX.bli
 $('sensDown').addEventListener('click', () => { SET.sens = clamp(SET.sens - 1, 1, 9); applySens(); SFX.blip(); refreshMenu(); });
 $('sensUp').addEventListener('click', () => { SET.sens = clamp(SET.sens + 1, 1, 9); applySens(); SFX.blip(); refreshMenu(); });
 $('swSound').addEventListener('click', () => { SET.sound = !SET.sound; SFX.setMuted(!SET.sound); syncMute(); refreshMenu(); SFX.blip(); });
+$('swGauge').addEventListener('click', () => { SET.gauge = !SET.gauge; SFX.blip(); refreshMenu(); });
 $('btnRecal').addEventListener('click', () => { SFX.unlock(); goCalib(); });
 function toggleMute() { SET.sound = !SET.sound; SFX.setMuted(!SET.sound); syncMute(); save(); }
 function syncMute() { $('btnMute').setAttribute('aria-pressed', String(!SET.sound)); $('btnMute').textContent = SET.sound ? '♪' : '✕'; $('btnMute').setAttribute('aria-label', SET.sound ? '소리 끄기' : '소리 켜기'); }
 $('btnMute').addEventListener('click', toggleMute);
 
 $('btnCam').addEventListener('click', startCamera);
-$('btnNoCam').addEventListener('click', () => { SFX.unlock(); S.cam.on = false; applySens(); goMenu(); });
+$('btnNoCam').addEventListener('click', () => { SFX.unlock(); S.cam.on = false; S.pad = false; applySens(); goMenu(); });
+$('btnPad').addEventListener('click', () => { SFX.unlock(); S.cam.on = false; S.pad = true; applySens(); goMenu(); });
 $('btnCalSkip').addEventListener('click', () => { SFX.unlock(); leaveCalib(); });
 $('btnCalNext').addEventListener('click', () => { SFX.unlock(); leaveCalib(); });
 $('btnStart').addEventListener('click', () => { SFX.unlock(); startGame(); });
@@ -838,6 +911,7 @@ function startGame() {
   showScreen(null); $('hud').hidden = false; $('banner').className = '';
   S.mode = SET.mode; S.lvl = LEVELS[SET.level] || LEVELS.normal;
   S.stats = { maxKmh: 0, longest: 0, aces: 0 };
+  chargeCancel(); padLock();
   P.x = P.tx = HOME.P[0]; P.z = P.tz = HOME.P[1]; Q.x = Q.tx = HOME.Q[0]; Q.z = Q.tz = HOME.Q[1];
   P.anim.cele = P.anim.sad = Q.anim.cele = Q.anim.sad = 0; P.anim.swing = Q.anim.swing = -1;
   if (S.cam.on) $('camBox').hidden = false;
@@ -849,7 +923,7 @@ function startGame() {
 function setPaused(p) {
   S.paused = p;
   showScreen(p ? 'pause' : null);
-  if (!p) { S.acc = 0; }
+  if (p) { chargeCancel(); padUnlock(); } else { S.acc = 0; padLock(); }
 }
 $('btnPause').addEventListener('click', () => setPaused(true));
 $('btnResume').addEventListener('click', () => setPaused(false));
@@ -864,6 +938,7 @@ function showResult() {
   $('resScore').textContent = '나 ' + sc.games[0] + ' : ' + sc.games[1] + ' CPU';
   $('resStats').innerHTML = `<div><b>${S.stats.maxKmh || '-'}</b>최고 속도 km/h</div><div><b>${S.stats.longest}</b>가장 긴 랠리</div><div><b>${S.stats.aces}</b>에이스</div>`;
   setHint(''); $('hud').hidden = true;
+  chargeCancel(); padUnlock();
   showScreen('result');
   if (won) SFX.win(); else SFX.lose();
 }
@@ -883,6 +958,14 @@ function syncVisuals(dt) {
   P.root.position.set(P.x, 0, P.z); Q.root.position.set(Q.x, 0, Q.z);
   poseAvatar(P, dt); poseAvatar(Q, dt);
   S.camT += dt;
+
+  // 파워 게이지
+  const gEl = $('gauge'), gOn = useGauge() && !S.paused && (S.phase === 'rally' || S.phase === 'toss');
+  if (gOn) {
+    const v = S.charge ? TC.gaugeAt(performance.now() / 1000 - S.charge.t0) : 0;
+    gEl.hidden = false; gEl.classList.toggle('idle', !S.charge); gEl.classList.toggle('max', !!S.charge && v > 0.93);
+    $('gaugeFill').style.width = (v * 100).toFixed(0) + '%';
+  } else if (!gEl.hidden) gEl.hidden = true;
 
   // 공
   const b = S.ball, show = S.ballVis;
@@ -940,6 +1023,6 @@ function frame(now) {
 /* ================================================================ 시작 */
 SFX.setMuted(!SET.sound); syncMute(); applySens();
 document.addEventListener('visibilitychange', () => { if (document.hidden && inGame() && !S.paused) setPaused(true); });
-window.HT = { S, P, Q, TC, SET, onSwing, startGame, goMenu, onHand, planContact, Hands, step: stepWorld, goCalib };
+window.HT = { S, P, Q, TC, SET, onSwing, startGame, goMenu, onHand, planContact, Hands, step: stepWorld, goCalib, frame: dt => { syncVisuals(dt); renderer.render(scene, camera); } };
 requestAnimationFrame(frame);
 })();

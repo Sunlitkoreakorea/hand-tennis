@@ -118,6 +118,12 @@ p.note { margin: 14px 0 0; font-size: 15px; color: #5d7690; line-height: 1.5; }
 #timing.perfect { color: var(--sun); }
 #hint { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); max-width: calc(100vw - 460px); padding: 10px 22px; border-radius: 999px; background: rgba(13,34,56,.82); color: #fff; font-size: 20px; text-align: center; transition: opacity .25s; }
 #hint:empty { opacity: 0; }
+#gauge { position: absolute; left: 50%; bottom: 76px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 9px 18px; border-radius: 999px; background: rgba(13,34,56,.84); color: #fff; font-size: 20px; transition: opacity .15s; }
+#gauge span { white-space: nowrap; }
+#gauge .gb { flex: 1 1 auto; min-width: 120px; width: min(320px, 50vw); height: 20px; border-radius: 10px; background: rgba(255,255,255,.2); overflow: hidden; }
+#gauge .gb i { display: block; height: 100%; width: 0; border-radius: 10px; background: linear-gradient(90deg, var(--sky), var(--sun) 72%, var(--coral)); }
+#gauge.idle { opacity: .5; }
+#gauge.max .gb { box-shadow: 0 0 0 3px var(--sun); }
 #hbtns { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 10px; }
 .ib { width: 52px; height: 52px; border-radius: 50%; background: rgba(13,34,56,.82); color: #fff; font-size: 22px; display: flex; align-items: center; justify-content: center; }
 .ib:hover { background: rgba(13,34,56,.95); }
@@ -135,6 +141,7 @@ p.note { margin: 14px 0 0; font-size: 15px; color: #5d7690; line-height: 1.5; }
   .split { grid-template-columns: 1fr; }
   .card { padding: 22px 18px; }
   #hint { max-width: calc(100vw - 32px); bottom: 190px; font-size: 17px; }
+  #gauge { bottom: 244px; }
   #camBox { width: 150px; }
   #board { font-size: 18px; min-width: 180px; }
 }
@@ -157,6 +164,7 @@ p.note { margin: 14px 0 0; font-size: 15px; color: #5d7690; line-height: 1.5; }
   <div id="speed"><span id="spdVal">0</span><small>km/h</small></div>
   <div id="banner"><span class="big" id="bnBig"></span><span class="sub" id="bnSub"></span></div>
   <div id="timing"></div>
+  <div id="gauge" class="idle" hidden><span>파워</span><div class="gb"><i id="gaugeFill"></i></div></div>
   <div id="hint"></div>
   <div id="hbtns">
     <button class="ib" id="btnMute" aria-label="소리 끄기" aria-pressed="false" title="소리 (M)">♪</button>
@@ -178,6 +186,7 @@ p.note { margin: 14px 0 0; font-size: 15px; color: #5d7690; line-height: 1.5; }
     <p class="lead">웹캠 앞에서 테니스 치듯 팔을 휘둘러 보세요.<br>달리기는 알아서 해 줘요. 휘두르기만 하면 돼요!</p>
     <div class="stack">
       <button class="btn primary big" id="btnCam">📷 카메라 켜고 시작</button>
+      <button class="btn" id="btnPad">💻 터치패드로 해보기</button>
       <button class="btn" id="btnNoCam">마우스·키보드로 해보기</button>
     </div>
     <div class="err" id="titleErr" hidden></div>
@@ -224,6 +233,7 @@ p.note { margin: 14px 0 0; font-size: 15px; color: #5d7690; line-height: 1.5; }
         <hr style="border:0;border-top:2px dashed var(--line);width:100%;margin:0">
         <div class="field"><span class="k">라켓 손</span>
           <div class="pills" data-key="hs"><button data-val="1">오른손</button><button data-val="-1">왼손</button></div></div>
+        <div class="field" id="fGauge"><span class="k">파워 게이지</span><button class="switch" id="swGauge" role="switch" aria-checked="true" aria-label="파워 게이지"></button></div>
         <div class="field" id="fSens"><span class="k">감도</span>
           <div class="stepper"><button id="sensDown" aria-label="감도 낮추기">−</button><output id="sensVal">5</output><button id="sensUp" aria-label="감도 높이기">＋</button></div></div>
         <div class="field"><span class="k">소리</span><button class="switch" id="swSound" role="switch" aria-checked="true" aria-label="소리"></button></div>

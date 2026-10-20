@@ -323,11 +323,14 @@ class SwingDetector {
   }
 }
 
+/* 파워 게이지 (키보드 모드): 누르고 있으면 rise초에 걸쳐 0→1로 차오르고 다시 줄어든다 (삼각파). 떼는 순간의 값이 파워 */
+function gaugeAt(dt, rise) { const m = (Math.max(0, dt) / (rise || 0.9)) % 2; return m <= 1 ? m : 2 - m; }
+
 /* 연습 모드 볼 머신용: 기본 값에 machine 덮어쓰기를 얹고 실수는 없앤다 */
 function machineLevel(key) { const L = LEVELS[key] || LEVELS.normal; return Object.assign({}, L, L.machine || {}, { miss: 0 }); }
 
 const API = {
-  C, LEVELS, machineLevel, clamp, gauss, netHeight, accelY, makeBall, copyBall, stepBall, findContact,
+  C, LEVELS, machineLevel, gaugeAt, clamp, gauss, netHeight, accelY, makeBall, copyBall, stepBall, findContact,
   solveShot, netClear, aim, timingLabel, planSwingShot, planServe, planAiShot, Score, Judge, SwingDetector,
 };
 root.TennisCore = API;

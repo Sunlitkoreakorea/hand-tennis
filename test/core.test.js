@@ -189,6 +189,16 @@ for (const key of ['easy', 'normal', 'hard']) {
   ok(speeds.fast > speeds.hard + 25 && speeds.insane > speeds.fast + 30, 'CPU 어려움 < 매우 빠름 < 말도 안 되게 빠름');
 }
 
+// 8-4) 파워 게이지: 0 → 1(0.9초) → 0(1.8초)을 반복하는 삼각파
+{
+  const g = T.gaugeAt;
+  ok(g(0) === 0 && Math.abs(g(0.45) - 0.5) < 1e-9 && Math.abs(g(0.9) - 1) < 1e-9, '게이지가 0.9초에 가득 찬다');
+  ok(Math.abs(g(1.35) - 0.5) < 1e-9 && Math.abs(g(1.8)) < 1e-9, '가득 찬 뒤 다시 줄어든다');
+  ok(Math.abs(g(2.25) - 0.5) < 1e-9 && g(-1) === 0, '반복되고 음수 시간은 0');
+  let bad = 0; for (let i = 0; i < 2000; i++) { const v = g(i * 0.013); if (v < 0 || v > 1) bad++; }
+  ok(bad === 0, '게이지 값은 항상 0~1');
+}
+
 // 9) 스윙 판정: 속도 단위(손 크기/초) — 손 크기 0.1, 0.3초에 화면 폭의 0.6만큼 휘두름
 {
   const sd = new SwingDetector(); const got = [];
