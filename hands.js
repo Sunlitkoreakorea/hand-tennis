@@ -32,18 +32,59 @@ H.load = function () {
 /* 카메라를 켜고 매 프레임 cb(sample|null, 초)를 부른다.
    sample.x/y/size: 거울상 화면에서 손바닥 중심과 손 크기 (영상 높이 단위),
    sample.nx/ny: 0~1로 정규화한 거울상 위치, sample.lm: 원본 랜드마크 21개 */
-H.start = async function (video, cb) {
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const FATAL = { NotAllowedError: 1, SecurityError: 1, NotFoundError: 1, NotSupportedError: 1 };
+
+/* 카메라 목록 (적외선·깊이 카메라는 뒤로). 권한을 한 번 받은 뒤라야 이름이 나온다 */
+H.cameras = async function () {
+  try {
+    const ir = /\b(ir|infrared|depth)\b|적외선/i;
+    const cams = (await navigator.mediaDevices.enumerateDevices())
+      .filter(d => d.kind === 'videoinput' && d.deviceId)
+      .map((d, i) => ({ id: d.deviceId, label: d.label || '카메라 ' + (i + 1) }));
+    return cams.sort((a, b) => ir.test(a.label) - ir.test(b.label));
+  } catch (_) { return []; }
+};
+
+/* 카메라 하나를 연다. 해상도·프레임 조건이 안 맞아 실패하는 드라이버가 있어서 조건을 단계적으로 줄여 가며 시도한다 */
+async function openOne(deviceId) {
+  const base = deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'user' };
+  const tries = [
+    Object.assign({ width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } }, base),
+    Object.assign({ width: { ideal: 640 }, height: { ideal: 480 } }, base),
+    deviceId ? base : true,
+  ];
+  let last;
+  for (let i = 0; i < tries.length; i++) {
+    try { return await navigator.mediaDevices.getUserMedia({ video: tries[i], audio: false }); }
+    catch (e) { last = e; if (FATAL[e.name]) throw e; await sleep(250); }
+  }
+  throw last;
+}
+
+/* 기본 카메라가 안 열리면 다른 카메라를 하나씩 시도한다
+   (노트북엔 윈도우 헬로용 적외선 카메라가 같이 있어서 기본 장치가 엉뚱한 쪽일 수 있다) */
+async function openStream(deviceId) {
+  try { return await openOne(deviceId); }
+  catch (e) {
+    if (deviceId || FATAL[e.name]) throw e;
+    for (const c of await H.cameras()) { try { return await openOne(c.id); } catch (_) { /* 다음 카메라 */ } }
+    throw e;
+  }
+}
+
+H.start = async function (video, cb, deviceId) {
   if (H.on || H.busy) return;
   H.busy = true; H.video = video; H.cb = cb;
   try {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       throw Object.assign(new Error('unsupported'), { name: 'NotSupportedError' });
     }
-    H.stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 }, facingMode: 'user' }, audio: false,
-    });
+    H.stream = await openStream(deviceId);
+    const track = H.stream.getVideoTracks()[0];
+    H.deviceId = (track && track.getSettings && track.getSettings().deviceId) || '';
     video.srcObject = H.stream;
-    await video.play();
+    try { await video.play(); } catch (_) { await sleep(200); await video.play(); }
     await H.load();
     H.on = true; H.errs = 0; H.lastT = -1; H._frames.length = 0;
     schedule();

@@ -706,27 +706,52 @@ function placeCamBox(inSlot) {
   if (S.cam.on) { box.hidden = false; $('camVideo').play().catch(() => {}); }
 }
 
-async function startCamera() {
-  const btn = $('btnCam'), err = $('titleErr');
+/* picked: 카메라 고르기 버튼에서 넘어온 deviceId. 없으면 지난번에 쓴 카메라, 그것도 없으면 기본 카메라 */
+async function startCamera(picked) {
+  const btn = $('btnCam'), err = $('titleErr'), explicit = typeof picked === 'string';
+  const saved = explicit ? picked : (SET.camId || '');
   err.hidden = true; btn.disabled = true; btn.textContent = '카메라 연결 중… 처음엔 몇 초 걸려요';
   SFX.unlock();
   try {
     $('camBox').hidden = false;
-    await Hands.start($('camVideo'), onHand);
+    try { await Hands.start($('camVideo'), onHand, saved || undefined); }
+    catch (e) {
+      // 지난번 카메라가 없어졌거나 안 열리면 기본 카메라로 한 번 더
+      if (saved && !explicit && e.name !== 'NotAllowedError' && e.name !== 'SecurityError') { SET.camId = ''; await Hands.start($('camVideo'), onHand); }
+      else throw e;
+    }
+    SET.camId = Hands.deviceId || ''; save();
     S.cam.on = true;
     applySens();
     goCalib();
   } catch (e) {
     $('camBox').hidden = true; S.cam.on = false;
-    const n = e && e.name;
-    err.textContent = !window.isSecureContext ? '카메라는 https 주소나 localhost에서만 쓸 수 있어요. 시작.bat으로 열거나 GitHub Pages 주소로 들어와 주세요.'
-      : (n === 'NotAllowedError' || n === 'SecurityError') ? '카메라 권한이 막혀 있어요. 주소창 왼쪽 자물쇠 → 카메라를 "허용"으로 바꾸고 다시 눌러 주세요.'
-      : n === 'NotFoundError' ? '카메라를 찾지 못했어요. 연결을 확인해 주세요.'
-      : n === 'NotReadableError' ? '다른 프로그램이 카메라를 쓰고 있어요. 닫고 다시 눌러 주세요.'
-      : '손 인식을 불러오지 못했어요. 인터넷 연결을 확인해 주세요. (마우스·키보드로는 바로 해볼 수 있어요)';
-    err.hidden = false;
+    await showCamError(e);
   }
   btn.disabled = false; btn.textContent = '📷 카메라 켜고 시작';
+}
+async function showCamError(e) {
+  const err = $('titleErr'), n = (e && e.name) || '';
+  const busy = n === 'NotReadableError' || n === 'AbortError' || n === 'OverconstrainedError';
+  err.textContent = !window.isSecureContext ? '카메라는 https 주소나 localhost에서만 쓸 수 있어요. 시작.bat으로 열거나 GitHub Pages 주소로 들어와 주세요.'
+    : (n === 'NotAllowedError' || n === 'SecurityError') ? '카메라 권한이 막혀 있어요. 주소창 왼쪽 자물쇠 → 카메라를 "허용"으로 바꾸고 다시 눌러 주세요.'
+    : n === 'NotFoundError' ? '카메라를 찾지 못했어요. 연결을 확인해 주세요.'
+    : busy ? '카메라가 열리지 않아요. 줌·팀즈·카메라 앱이나 카메라를 쓰는 다른 탭을 닫고 다시 눌러 보세요. 그래도 안 되면 아래에서 카메라를 직접 골라 보세요.'
+    : '손 인식을 불러오지 못했어요. 인터넷 연결을 확인해 주세요. (마우스·키보드로는 바로 해볼 수 있어요)';
+  if (n) { const s = document.createElement('small'); s.className = 'tech'; s.textContent = ' (' + n + ')'; err.appendChild(s); }
+  if (busy) {
+    const cams = await Hands.cameras();
+    if (cams.length) {
+      const box = document.createElement('div'); box.className = 'cams';
+      for (const c of cams) {
+        const b = document.createElement('button'); b.className = 'btn'; b.textContent = '📷 ' + c.label;
+        b.addEventListener('click', () => startCamera(c.id));
+        box.appendChild(b);
+      }
+      err.appendChild(box);
+    }
+  }
+  err.hidden = false;
 }
 
 /* ---- 손 맞추기 ---- */
