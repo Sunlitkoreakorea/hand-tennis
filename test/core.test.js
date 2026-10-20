@@ -139,6 +139,28 @@ for (const key of ['easy', 'normal', 'hard']) {
   ok(found > 140, '날아오는 공의 타점을 대부분 찾는다');
 }
 
+// 8-2) 볼 머신 초고속 단계: 공이 코트에 들어오고, 단계가 오를수록 확실히 빠르다
+{
+  const med = a => a.slice().sort((x, y) => x - y)[a.length >> 1], speeds = {};
+  for (const key of ['hard', 'fast', 'insane']) {
+    const L = Object.assign({}, LEVELS[key], { miss: 0 }), rnd = rng(7), kmhs = []; let inN = 0, N = 300;
+    for (let i = 0; i < N; i++) {
+      const from = { x: (rnd() - 0.5) * 5, y: L.fromY || 1.0, z: -12.4 };
+      const p = T.planAiShot({ lvl: L, oppX: 0, from, facing: 1, rnd });
+      const b = T.makeBall(from.x, from.y, from.z); b.vx = p.v.vx; b.vy = p.v.vy; b.vz = p.v.vz; b.spin = p.spin;
+      const j = new Judge(); j.hit(1);
+      const res = fly(b, j);
+      if (j.bounces >= 1 && !(res && res.kind === 'point' && res.winner === 0)) inN++;
+      kmhs.push(p.kmh);
+    }
+    speeds[key] = med(kmhs);
+    ok(inN / N > 0.9, key + ' 머신 공이 90% 이상 코트 안 (' + (inN / N * 100).toFixed(0) + '%)');
+  }
+  console.log('머신 공 속도(중앙값 km/h):', speeds);
+  ok(speeds.fast > speeds.hard + 25 && speeds.insane > speeds.fast + 40, '매우 빠름 < 말도 안 되게 빠름 속도 순서');
+  ok(speeds.insane > 170, '말도 안 되게 빠름은 170km/h 이상');
+}
+
 // 9) 스윙 판정: 속도 단위(손 크기/초) — 손 크기 0.1, 0.3초에 화면 폭의 0.6만큼 휘두름
 {
   const sd = new SwingDetector(); const got = [];

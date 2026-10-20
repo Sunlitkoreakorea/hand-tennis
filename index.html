@@ -59,7 +59,7 @@ p.note { margin: 14px 0 0; font-size: 15px; color: #5d7690; line-height: 1.5; }
 .detail { background: #f7fafc; border-radius: 22px; padding: 20px 22px; display: flex; flex-direction: column; gap: 16px; }
 .field { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .field > label, .field > span.k { font-size: 19px; min-width: 96px; }
-.pills { display: inline-flex; background: #e6eef5; border-radius: 999px; padding: 4px; gap: 2px; }
+.pills { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; background: #e6eef5; border-radius: 26px; padding: 4px; gap: 2px; }
 .pills button { min-height: 44px; padding: 0 18px; border-radius: 999px; font-size: 18px; transition: background .12s; }
 .pills button:hover, .pills button.hover { background: rgba(255,255,255,.7); }
 .pills button[aria-pressed="true"] { background: var(--paper); box-shadow: 0 2px 6px rgba(13,34,56,.18); color: var(--ink); }
@@ -218,7 +218,7 @@ p.note { margin: 14px 0 0; font-size: 15px; color: #5d7690; line-height: 1.5; }
         </div>
         <div id="dPractice" class="detail" style="padding:0;background:none" hidden>
           <div class="field"><span class="k">공 속도</span>
-            <div class="pills" data-key="machine"><button data-val="easy">느림</button><button data-val="normal">보통</button><button data-val="hard">빠름</button></div></div>
+            <div class="pills" data-key="machine"><button data-val="easy">느림</button><button data-val="normal">보통</button><button data-val="hard">빠름</button><button data-val="fast">매우 빠름</button><button data-val="insane">말도 안 되게 빠름</button></div></div>
           <p class="desc">공이 오면 팔을 휘둘러 상대 코트에 넣어 보세요. 연속으로 몇 번 성공하는지 세요.</p>
         </div>
         <hr style="border:0;border-top:2px dashed var(--line);width:100%;margin:0">

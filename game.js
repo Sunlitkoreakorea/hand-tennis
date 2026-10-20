@@ -408,7 +408,7 @@ function planContact(recv) {
   S.plan[recv] = { c, absT: S.simT + c.t, ballSide, standX, standZ };
   av.tx = standX; av.tz = standZ;
   av.moveAt = recv === 0 ? S.simT : S.simT + S.lvl.react;
-  av.speed = recv === 0 ? 7.6 : S.lvl.speed;
+  av.speed = recv === 0 ? (S.mode === 'practice' && LEVELS[SET.machine].pspd) || 7.6 : S.lvl.speed;
 }
 
 function cpuSwing() {
@@ -533,14 +533,14 @@ function feedBall() {
   const L = Object.assign({}, LEVELS[SET.machine], { miss: 0 });
   let plan = null, from = null;
   for (let i = 0; i < 12; i++) {
-    from = { x: (rnd() - 0.5) * 5, y: 1.0, z: -12.4 };
+    from = { x: (rnd() - 0.5) * 5, y: L.fromY || 1.0, z: -12.4 };
     plan = TC.planAiShot({ lvl: L, oppX: P.x, from, facing: 1, rnd });
     const b = TC.makeBall(from.x, from.y, from.z); b.vx = plan.v.vx; b.vy = plan.v.vy; b.vz = plan.v.vz; b.spin = plan.spin;
     const c = TC.findContact(b, 1);
     if (c && !c.out && c.y < 2.0) break;
   }
   Q.x = Q.tx = from.x; Q.z = Q.tz = HOME.Q[1];
-  startSwing(Q, 'fh', 0.6, 0);
+  startSwing(Q, L.fromY > 1.5 ? 'serve' : 'fh', 0.6, 0);
   Object.assign(S.ball, { x: from.x, y: from.y, z: from.z, vx: 0, vy: 0, vz: 0 });
   S.visOff.set(0, 0, 0); S.rally = 0;
   S.judge.reset(); S.phase = 'rally';
